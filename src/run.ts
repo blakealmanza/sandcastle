@@ -106,6 +106,8 @@ export interface RunOptions {
   readonly timeoutSeconds?: number;
   /** Optional name for the run, shown as a prefix in log output */
   readonly name?: string;
+  /** Paths relative to the host repo root to copy into the worktree before container start. */
+  readonly copyToSandbox?: string[];
 }
 
 export interface RunResult {
@@ -210,6 +212,7 @@ export const run = async (options: RunOptions): Promise<RunResult> => {
         // Pass explicit branch only — when undefined, WorktreeManager creates a temp branch
         // and SandboxLifecycle cherry-picks commits onto the host's current branch
         branch,
+        copyToSandbox: options.copyToSandbox,
       }),
       NodeFileSystem.layer,
     ),

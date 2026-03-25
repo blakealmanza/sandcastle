@@ -17,6 +17,7 @@ import {
   type WorktreeError,
 } from "./errors.js";
 import * as WorktreeManager from "./WorktreeManager.js";
+import { copyToSandbox } from "./CopyToSandbox.js";
 
 export interface ExecResult {
   readonly stdout: string;
@@ -263,6 +264,8 @@ export class WorktreeSandboxConfig extends Context.Tag("WorktreeSandboxConfig")<
     readonly hostRepoDir: string;
     /** When specified, the worktree checks out this branch. Otherwise a temp branch is created. */
     readonly branch?: string;
+    /** Paths relative to the host repo root to copy into the worktree before container start. */
+    readonly copyToSandbox?: string[];
   }
 >() {}
 
@@ -293,8 +296,13 @@ export const WorktreeDockerSandboxFactory = {
   layer: Layer.effect(
     SandboxFactory,
     Effect.gen(function* () {
-      const { imageName, env, hostRepoDir, branch } =
-        yield* WorktreeSandboxConfig;
+      const {
+        imageName,
+        env,
+        hostRepoDir,
+        branch,
+        copyToSandbox: copyPaths,
+      } = yield* WorktreeSandboxConfig;
       const fileSystem = yield* FileSystem.FileSystem;
       return {
         withSandbox: <A, E, R>(
@@ -327,6 +335,14 @@ export const WorktreeDockerSandboxFactory = {
                 ),
               )
               .pipe(Effect.provideService(FileSystem.FileSystem, fileSystem))
+              .pipe(
+                Effect.flatMap((worktreeInfo) =>
+                  (copyPaths && copyPaths.length > 0
+                    ? copyToSandbox(copyPaths, hostRepoDir, worktreeInfo.path)
+                    : Effect.succeed(undefined)
+                  ).pipe(Effect.map(() => worktreeInfo)),
+                ),
+              )
               .pipe(
                 Effect.flatMap((worktreeInfo) => {
                   const gitDir = join(hostRepoDir, ".git");
