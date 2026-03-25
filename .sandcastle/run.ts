@@ -11,6 +11,7 @@ for (let iteration = 1; iteration <= MAX_ITERATIONS; iteration++) {
 
   // Phase 1: Plan — orchestrator agent analyzes issues and picks parallelizable work
   const plan = await sandcastle.run({
+    name: "Planner",
     hooks,
     maxIterations: 1,
     model: "claude-opus-4-6",
@@ -44,6 +45,7 @@ for (let iteration = 1; iteration <= MAX_ITERATIONS; iteration++) {
   const settled = await Promise.allSettled(
     issues.map((issue) =>
       sandcastle.run({
+        name: "Implementer #" + issue.number,
         hooks,
         maxIterations: 100,
         model: "claude-sonnet-4-6",
@@ -98,6 +100,7 @@ for (let iteration = 1; iteration <= MAX_ITERATIONS; iteration++) {
 
   // Phase 3: Merge — one agent merges all branches together
   await sandcastle.run({
+    name: "Merger",
     hooks,
     maxIterations: 10,
     model: "claude-sonnet-4-6",
