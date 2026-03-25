@@ -9,6 +9,7 @@ import {
   InitError,
   PromptError,
   SyncError,
+  WorktreeError,
 } from "./errors.js";
 
 describe("tagged errors", () => {
@@ -54,6 +55,12 @@ describe("tagged errors", () => {
   it("AgentError has correct _tag", () => {
     const err = new AgentError({ message: "agent failed" });
     expect(err._tag).toBe("AgentError");
+    expect(err).toBeInstanceOf(Error);
+  });
+
+  it("WorktreeError has correct _tag", () => {
+    const err = new WorktreeError({ message: "worktree failed" });
+    expect(err._tag).toBe("WorktreeError");
     expect(err).toBeInstanceOf(Error);
   });
 

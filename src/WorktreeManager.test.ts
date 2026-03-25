@@ -1,3 +1,4 @@
+import { Effect } from "effect";
 import { exec } from "node:child_process";
 import { mkdir, mkdtemp, readdir, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -44,6 +45,14 @@ const setupRepo = async () => {
   return repoDir;
 };
 
+/** Run an Effect and return its success value, throwing on failure. */
+const run = <A, E>(effect: Effect.Effect<A, E>) =>
+  Effect.runPromise(effect as Effect.Effect<A, never>);
+
+/** Run an Effect and return the error, throwing if it succeeds. */
+const runFail = <A, E>(effect: Effect.Effect<A, E>) =>
+  Effect.runPromise(Effect.flip(effect));
+
 describe("generateTempBranchName", () => {
   it("returns a string in sandcastle/<YYYYMMDD-HHMMSS> format", () => {
     const name = generateTempBranchName();
@@ -61,7 +70,7 @@ describe("generateTempBranchName", () => {
 describe("WorktreeManager.create", () => {
   it("creates a worktree at .sandcastle/worktrees/<name>/", async () => {
     const repoDir = await setupRepo();
-    const { path } = await create(repoDir);
+    const { path } = await run(create(repoDir));
     expect(path).toContain(join(repoDir, ".sandcastle", "worktrees"));
     const s = await stat(path);
     expect(s.isDirectory()).toBe(true);
@@ -69,14 +78,14 @@ describe("WorktreeManager.create", () => {
 
   it("returns the branch name", async () => {
     const repoDir = await setupRepo();
-    const { branch } = await create(repoDir);
+    const { branch } = await run(create(repoDir));
     expect(typeof branch).toBe("string");
     expect(branch.length).toBeGreaterThan(0);
   });
 
   it("creates a sandcastle/<timestamp> branch when no branch is specified", async () => {
     const repoDir = await setupRepo();
-    const { branch } = await create(repoDir);
+    const { branch } = await run(create(repoDir));
     expect(branch).toMatch(/^sandcastle\/\d{8}-\d{6}$/);
   });
 
@@ -87,16 +96,16 @@ describe("WorktreeManager.create", () => {
     await commitFile(repoDir, "feature.txt", "x", "feature commit");
     await execAsync("git checkout main", { cwd: repoDir });
 
-    const { path, branch } = await create(repoDir, {
-      branch: "feature/my-feature",
-    });
+    const { path, branch } = await run(
+      create(repoDir, { branch: "feature/my-feature" }),
+    );
     expect(branch).toBe("feature/my-feature");
     expect(await getBranch(path)).toBe("feature/my-feature");
   });
 
   it("the worktree directory is on the correct branch", async () => {
     const repoDir = await setupRepo();
-    const { path } = await create(repoDir);
+    const { path } = await run(create(repoDir));
     // The worktree should have a valid git repo
     const { stdout } = await execAsync("git rev-parse --abbrev-ref HEAD", {
       cwd: path,
@@ -112,12 +121,11 @@ describe("WorktreeManager.create", () => {
     await execAsync("git checkout main", { cwd: repoDir });
 
     // Create first worktree on that branch
-    await create(repoDir, { branch: "my-branch" });
+    await run(create(repoDir, { branch: "my-branch" }));
 
     // Try to create a second worktree on the same branch — should fail clearly
-    await expect(create(repoDir, { branch: "my-branch" })).rejects.toThrow(
-      /already checked out/i,
-    );
+    const err = await runFail(create(repoDir, { branch: "my-branch" }));
+    expect(err.message).toMatch(/already checked out/i);
   });
 
   it("error message includes the path of the existing worktree", async () => {
@@ -126,19 +134,12 @@ describe("WorktreeManager.create", () => {
     await commitFile(repoDir, "x.txt", "x", "branch commit");
     await execAsync("git checkout main", { cwd: repoDir });
 
-    const { path: existingPath } = await create(repoDir, {
-      branch: "my-branch",
-    });
+    const { path: existingPath } = await run(
+      create(repoDir, { branch: "my-branch" }),
+    );
 
-    let error: Error | undefined;
-    try {
-      await create(repoDir, { branch: "my-branch" });
-    } catch (e) {
-      error = e as Error;
-    }
-
-    expect(error).toBeDefined();
-    expect(error!.message).toContain(existingPath);
+    const err = await runFail(create(repoDir, { branch: "my-branch" }));
+    expect(err.message).toContain(existingPath);
   });
 
   it("error message suggests what to do", async () => {
@@ -147,18 +148,10 @@ describe("WorktreeManager.create", () => {
     await commitFile(repoDir, "x.txt", "x", "branch commit");
     await execAsync("git checkout main", { cwd: repoDir });
 
-    await create(repoDir, { branch: "my-branch" });
+    await run(create(repoDir, { branch: "my-branch" }));
 
-    let error: Error | undefined;
-    try {
-      await create(repoDir, { branch: "my-branch" });
-    } catch (e) {
-      error = e as Error;
-    }
-
-    expect(error).toBeDefined();
-    // Should suggest using a different branch or waiting
-    expect(error!.message).toMatch(/different branch|wait/i);
+    const err = await runFail(create(repoDir, { branch: "my-branch" }));
+    expect(err.message).toMatch(/different branch|wait/i);
   });
 
   it("parallel runs on different branches work without interference", async () => {
@@ -171,23 +164,23 @@ describe("WorktreeManager.create", () => {
     await execAsync("git checkout main", { cwd: repoDir });
 
     const [wtA, wtB] = await Promise.all([
-      create(repoDir, { branch: "branch-a" }),
-      create(repoDir, { branch: "branch-b" }),
+      run(create(repoDir, { branch: "branch-a" })),
+      run(create(repoDir, { branch: "branch-b" })),
     ]);
 
     expect(wtA.branch).toBe("branch-a");
     expect(wtB.branch).toBe("branch-b");
     expect(wtA.path).not.toBe(wtB.path);
 
-    await remove(wtA.path);
-    await remove(wtB.path);
+    await run(remove(wtA.path));
+    await run(remove(wtB.path));
   });
 
   it("creates a new branch from HEAD when specified branch does not exist", async () => {
     const repoDir = await setupRepo();
-    const { path, branch } = await create(repoDir, {
-      branch: "sandcastle/issue-42-new-feature",
-    });
+    const { path, branch } = await run(
+      create(repoDir, { branch: "sandcastle/issue-42-new-feature" }),
+    );
 
     expect(branch).toBe("sandcastle/issue-42-new-feature");
     expect(await getBranch(path)).toBe("sandcastle/issue-42-new-feature");
@@ -201,33 +194,32 @@ describe("WorktreeManager.create", () => {
     });
     expect(worktreeHead.trim()).toBe(mainHead.trim());
 
-    await remove(path);
+    await run(remove(path));
   });
 
   it("detects collision when branch is checked out in the main working tree", async () => {
     const repoDir = await setupRepo();
     // "main" is the currently checked-out branch in the main working tree
-    await expect(create(repoDir, { branch: "main" })).rejects.toThrow(
-      /already checked out/i,
-    );
+    const err = await runFail(create(repoDir, { branch: "main" }));
+    expect(err.message).toMatch(/already checked out/i);
   });
 });
 
 describe("WorktreeManager.remove", () => {
   it("removes the worktree directory", async () => {
     const repoDir = await setupRepo();
-    const { path } = await create(repoDir);
+    const { path } = await run(create(repoDir));
 
-    await remove(path);
+    await run(remove(path));
 
     await expect(stat(path)).rejects.toThrow();
   });
 
   it("removes git worktree metadata", async () => {
     const repoDir = await setupRepo();
-    const { path } = await create(repoDir);
+    const { path } = await run(create(repoDir));
 
-    await remove(path);
+    await run(remove(path));
 
     // After removal, the worktree should not appear in git worktree list
     const { stdout } = await execAsync("git worktree list --porcelain", {
@@ -240,14 +232,14 @@ describe("WorktreeManager.remove", () => {
 describe("WorktreeManager.pruneStale", () => {
   it("runs git worktree prune to clean up stale metadata", async () => {
     const repoDir = await setupRepo();
-    const { path } = await create(repoDir);
+    const { path } = await run(create(repoDir));
 
     // Manually delete the worktree directory (simulating a crash)
     const { execSync } = await import("node:child_process");
     execSync(`rm -rf "${path}"`);
 
     // pruneStale should not throw
-    await expect(pruneStale(repoDir)).resolves.not.toThrow();
+    await run(pruneStale(repoDir));
 
     // Git metadata should be cleaned up
     const { stdout } = await execAsync("git worktree list --porcelain", {
@@ -265,7 +257,7 @@ describe("WorktreeManager.pruneStale", () => {
     const orphanDir = join(worktreesDir, "orphan-dir");
     await mkdir(orphanDir);
 
-    await pruneStale(repoDir);
+    await run(pruneStale(repoDir));
 
     const entries = await readdir(worktreesDir).catch(() => []);
     expect(entries).not.toContain("orphan-dir");
@@ -273,15 +265,15 @@ describe("WorktreeManager.pruneStale", () => {
 
   it("does not remove active worktrees", async () => {
     const repoDir = await setupRepo();
-    const { path } = await create(repoDir);
+    const { path } = await run(create(repoDir));
     const name = path.split("/").pop()!;
 
-    await pruneStale(repoDir);
+    await run(pruneStale(repoDir));
 
     const s = await stat(path);
     expect(s.isDirectory()).toBe(true);
     // cleanup
-    await remove(path);
+    await run(remove(path));
     // suppress unused var warning
     void name;
   });

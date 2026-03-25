@@ -8,7 +8,7 @@ import {
   removeContainer,
   chownInContainer,
 } from "./DockerLifecycle.js";
-import type { DockerError } from "./errors.js";
+import type { DockerError, WorktreeError } from "./errors.js";
 import { Sandbox } from "./Sandbox.js";
 import * as WorktreeManager from "./WorktreeManager.js";
 
@@ -33,7 +33,7 @@ export class SandboxFactory extends Context.Tag("SandboxFactory")<
   {
     readonly withSandbox: <A, E, R>(
       makeEffect: (info: SandboxInfo) => Effect.Effect<A, E, R | Sandbox>,
-    ) => Effect.Effect<A, E | DockerError, Exclude<R, Sandbox>>;
+    ) => Effect.Effect<A, E | DockerError | WorktreeError, Exclude<R, Sandbox>>;
     /** True in worktree mode — the repo is bind-mounted, so sync is unnecessary. */
     readonly skipSync: boolean;
   }
@@ -95,26 +95,31 @@ export const WorktreeDockerSandboxFactory = {
         skipSync: true,
         withSandbox: <A, E, R>(
           makeEffect: (info: SandboxInfo) => Effect.Effect<A, E, R | Sandbox>,
-        ): Effect.Effect<A, E | DockerError, Exclude<R, Sandbox>> => {
+        ): Effect.Effect<
+          A,
+          E | DockerError | WorktreeError,
+          Exclude<R, Sandbox>
+        > => {
           const containerName = `sandcastle-${randomUUID()}`;
 
           return Effect.acquireUseRelease(
             // Acquire: prune stale worktrees (best-effort), create worktree, then start container
-            Effect.promise(() =>
-              WorktreeManager.pruneStale(hostRepoDir).catch((e) => {
-                console.error(
-                  "[sandcastle] Warning: failed to prune stale worktrees:",
-                  e,
-                );
-              }),
-            )
+            WorktreeManager.pruneStale(hostRepoDir)
+              .pipe(
+                Effect.catchAll((e) =>
+                  Effect.sync(() => {
+                    console.error(
+                      "[sandcastle] Warning: failed to prune stale worktrees:",
+                      e.message,
+                    );
+                  }),
+                ),
+              )
               .pipe(
                 Effect.andThen(
-                  Effect.promise(() =>
-                    branch
-                      ? WorktreeManager.create(hostRepoDir, { branch })
-                      : WorktreeManager.create(hostRepoDir),
-                  ),
+                  branch
+                    ? WorktreeManager.create(hostRepoDir, { branch })
+                    : WorktreeManager.create(hostRepoDir),
                 ),
               )
               .pipe(
@@ -173,11 +178,7 @@ export const WorktreeDockerSandboxFactory = {
                 process.removeListener("SIGTERM", onSignal);
               }).pipe(
                 Effect.andThen(removeContainer(containerName)),
-                Effect.andThen(
-                  Effect.promise(() =>
-                    WorktreeManager.remove(worktreeInfo.path),
-                  ),
-                ),
+                Effect.andThen(WorktreeManager.remove(worktreeInfo.path)),
                 Effect.orDie,
               ),
           );
@@ -196,7 +197,11 @@ export const DockerSandboxFactory = {
         skipSync: false,
         withSandbox: <A, E, R>(
           makeEffect: (info: SandboxInfo) => Effect.Effect<A, E, R | Sandbox>,
-        ): Effect.Effect<A, E | DockerError, Exclude<R, Sandbox>> => {
+        ): Effect.Effect<
+          A,
+          E | DockerError | WorktreeError,
+          Exclude<R, Sandbox>
+        > => {
           const containerName = `sandcastle-${randomUUID()}`;
 
           const cleanup = () => forceRemoveContainerSync(containerName);

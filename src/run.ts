@@ -143,7 +143,9 @@ export const run = async (options: RunOptions): Promise<RunResult> => {
   // When using a temp branch, prefix the log filename with the target branch
   // (the host's current branch) so developers can tell which branch was targeted.
   const targetBranch =
-    branch === undefined ? await getCurrentBranch(hostRepoDir) : undefined;
+    branch === undefined
+      ? await Effect.runPromise(getCurrentBranch(hostRepoDir))
+      : undefined;
 
   // Resolve logging option
   const resolvedLogging: LoggingOption = options.logging ?? {

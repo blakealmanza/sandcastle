@@ -27,6 +27,11 @@ export class SyncError extends Data.TaggedError("SyncError")<{
   readonly message: string;
 }> {}
 
+/** Git worktree operation failed */
+export class WorktreeError extends Data.TaggedError("WorktreeError")<{
+  readonly message: string;
+}> {}
+
 /** Prompt resolution or preprocessing failed */
 export class PromptError extends Data.TaggedError("PromptError")<{
   readonly message: string;
@@ -60,6 +65,7 @@ export type SandboxError =
   | CopyError
   | DockerError
   | SyncError
+  | WorktreeError
   | PromptError
   | AgentError
   | ConfigDirError

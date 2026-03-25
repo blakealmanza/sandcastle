@@ -1,5 +1,6 @@
 import { Effect, Layer } from "effect";
 import { describe, expect, it, vi, beforeEach } from "vitest";
+import { WorktreeError } from "./errors.js";
 
 // Mock child_process before importing modules under test
 vi.mock("node:child_process", () => ({
@@ -60,12 +61,14 @@ describe("WorktreeDockerSandboxFactory", () => {
     );
 
   beforeEach(() => {
-    mockCreate.mockResolvedValue({
-      path: worktreePath,
-      branch: "sandcastle/20240101-000000",
-    });
-    mockRemove.mockResolvedValue(undefined);
-    mockPruneStale.mockResolvedValue(undefined);
+    mockCreate.mockReturnValue(
+      Effect.succeed({
+        path: worktreePath,
+        branch: "sandcastle/20240101-000000",
+      }),
+    );
+    mockRemove.mockReturnValue(Effect.void);
+    mockPruneStale.mockReturnValue(Effect.void);
     mockDockerSuccess();
   });
 
@@ -162,13 +165,17 @@ describe("WorktreeDockerSandboxFactory", () => {
 
   it("prunes stale worktrees before creating a new worktree", async () => {
     const callOrder: string[] = [];
-    mockPruneStale.mockImplementation(async () => {
-      callOrder.push("pruneStale");
-    });
-    mockCreate.mockImplementation(async () => {
-      callOrder.push("create");
-      return { path: worktreePath, branch: "sandcastle/20240101-000000" };
-    });
+    mockPruneStale.mockImplementation(() =>
+      Effect.sync(() => {
+        callOrder.push("pruneStale");
+      }),
+    );
+    mockCreate.mockImplementation(() =>
+      Effect.sync(() => {
+        callOrder.push("create");
+        return { path: worktreePath, branch: "sandcastle/20240101-000000" };
+      }),
+    );
 
     await Effect.runPromise(
       Effect.gen(function* () {
@@ -184,7 +191,9 @@ describe("WorktreeDockerSandboxFactory", () => {
   });
 
   it("continues creating the worktree even if pruning fails", async () => {
-    mockPruneStale.mockRejectedValue(new Error("prune failed"));
+    mockPruneStale.mockReturnValue(
+      Effect.fail(new WorktreeError({ message: "prune failed" })),
+    );
 
     await Effect.runPromise(
       Effect.gen(function* () {
