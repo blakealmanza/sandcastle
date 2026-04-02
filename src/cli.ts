@@ -315,7 +315,7 @@ const AGENT_REGISTRY: Record<
   "claude-code": { factory: claudeCode, defaultModel: DEFAULT_MODEL },
 };
 
-const agentOption = Options.text("agent").pipe(
+const interactiveAgentOption = Options.text("agent").pipe(
   Options.withDescription(
     `Agent provider to use (${Object.keys(AGENT_REGISTRY).join(", ")})`,
   ),
@@ -401,7 +401,7 @@ const interactiveCommand = Command.make(
   "interactive",
   {
     imageName: imageNameOption,
-    agent: agentOption,
+    agent: interactiveAgentOption,
     model: modelOption,
   },
   ({ imageName: imageNameFlag, agent: agentName, model }) =>
