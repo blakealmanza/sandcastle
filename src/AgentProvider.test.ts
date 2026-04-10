@@ -63,7 +63,6 @@ describe("claudeCode factory", () => {
       {
         type: "result",
         result: "Final answer <promise>COMPLETE</promise>",
-        usage: null,
       },
     ]);
   });
@@ -226,39 +225,8 @@ describe("pi factory", () => {
       {
         type: "result",
         result: "Final answer <promise>COMPLETE</promise>",
-        usage: null,
       },
     ]);
-  });
-
-  it("parseStreamLine extracts usage from agent_end event when present", () => {
-    const provider = pi("claude-sonnet-4-6");
-    const line = JSON.stringify({
-      type: "agent_end",
-      last_assistant_message: "Done",
-      usage: {
-        input_tokens: 100,
-        output_tokens: 50,
-        cache_read_input_tokens: 10,
-        cache_creation_input_tokens: 5,
-      },
-      total_cost_usd: 0.01,
-      num_turns: 3,
-      duration_ms: 5000,
-    });
-    const events = provider.parseStreamLine(line);
-    expect(events).toHaveLength(1);
-    expect(events[0]!.type).toBe("result");
-    const result = events[0] as { type: "result"; usage: unknown };
-    expect(result.usage).toEqual({
-      input_tokens: 100,
-      output_tokens: 50,
-      cache_read_input_tokens: 10,
-      cache_creation_input_tokens: 5,
-      total_cost_usd: 0.01,
-      num_turns: 3,
-      duration_ms: 5000,
-    });
   });
 
   it("parseStreamLine returns empty array for non-JSON lines", () => {
@@ -354,7 +322,7 @@ describe("codex factory", () => {
     });
     expect(provider.parseStreamLine(line)).toEqual([
       { type: "text", text: "Hello world" },
-      { type: "result", result: "Hello world", usage: null },
+      { type: "result", result: "Hello world" },
     ]);
   });
 

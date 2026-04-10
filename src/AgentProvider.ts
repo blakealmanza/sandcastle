@@ -1,46 +1,9 @@
-export interface TokenUsage {
-  readonly input_tokens: number;
-  readonly output_tokens: number;
-  readonly cache_read_input_tokens: number;
-  readonly cache_creation_input_tokens: number;
-  readonly total_cost_usd: number;
-  readonly num_turns: number;
-  readonly duration_ms: number;
-}
-
 export type ParsedStreamEvent =
   | { type: "text"; text: string }
-  | { type: "result"; result: string; usage: TokenUsage | null }
+  | { type: "result"; result: string }
   | { type: "tool_call"; name: string; args: string };
 
 const shellEscape = (s: string): string => "'" + s.replace(/'/g, "'\\''") + "'";
-
-const extractUsage = (obj: Record<string, unknown>): TokenUsage | null => {
-  const usage = obj.usage as Record<string, unknown> | undefined;
-  if (
-    !usage ||
-    typeof usage.input_tokens !== "number" ||
-    typeof usage.output_tokens !== "number"
-  ) {
-    return null;
-  }
-  return {
-    input_tokens: usage.input_tokens,
-    output_tokens: usage.output_tokens,
-    cache_read_input_tokens:
-      typeof usage.cache_read_input_tokens === "number"
-        ? usage.cache_read_input_tokens
-        : 0,
-    cache_creation_input_tokens:
-      typeof usage.cache_creation_input_tokens === "number"
-        ? usage.cache_creation_input_tokens
-        : 0,
-    total_cost_usd:
-      typeof obj.total_cost_usd === "number" ? obj.total_cost_usd : 0,
-    num_turns: typeof obj.num_turns === "number" ? obj.num_turns : 0,
-    duration_ms: typeof obj.duration_ms === "number" ? obj.duration_ms : 0,
-  };
-};
 
 /** Maps allowlisted tool names to the input field containing the display arg */
 const TOOL_ARG_FIELDS: Record<string, string> = {
@@ -91,7 +54,7 @@ const parseStreamJsonLine = (line: string): ParsedStreamEvent[] => {
       return events;
     }
     if (obj.type === "result" && typeof obj.result === "string") {
-      return [{ type: "result", result: obj.result, usage: extractUsage(obj) }];
+      return [{ type: "result", result: obj.result }];
     }
   } catch {
     // Not valid JSON — skip
@@ -150,7 +113,6 @@ const parsePiStreamLine = (line: string): ParsedStreamEvent[] => {
         {
           type: "result",
           result: obj.last_assistant_message,
-          usage: extractUsage(obj),
         },
       ];
     }
@@ -194,7 +156,7 @@ const parseCodexStreamLine = (line: string): ParsedStreamEvent[] => {
       const text = obj.item.content;
       return [
         { type: "text", text },
-        { type: "result", result: text, usage: extractUsage(obj) },
+        { type: "result", result: text },
       ];
     }
 

@@ -816,7 +816,6 @@ describe("parseStreamLine (via claudeCode provider)", () => {
       {
         type: "result",
         result: "Final answer <promise>COMPLETE</promise>",
-        usage: null,
       },
     ]);
   });
@@ -1009,69 +1008,6 @@ describe("parseStreamLine (via claudeCode provider)", () => {
     });
     expect(claudeCode("test-model").parseStreamLine(line)).toEqual([
       { type: "text", text: "Just text, no tools" },
-    ]);
-  });
-
-  it("extracts usage data from result message", () => {
-    const line = JSON.stringify({
-      type: "result",
-      result: "Done.",
-      total_cost_usd: 0.14,
-      num_turns: 3,
-      duration_ms: 12000,
-      usage: {
-        input_tokens: 52340,
-        output_tokens: 3201,
-        cache_read_input_tokens: 10000,
-        cache_creation_input_tokens: 5000,
-      },
-    });
-    const parsed = claudeCode("test-model").parseStreamLine(line);
-    expect(parsed).toEqual([
-      {
-        type: "result",
-        result: "Done.",
-        usage: {
-          input_tokens: 52340,
-          output_tokens: 3201,
-          cache_read_input_tokens: 10000,
-          cache_creation_input_tokens: 5000,
-          total_cost_usd: 0.14,
-          num_turns: 3,
-          duration_ms: 12000,
-        },
-      },
-    ]);
-  });
-
-  it("returns null usage when result message has no usage data", () => {
-    const line = JSON.stringify({
-      type: "result",
-      result: "Done.",
-    });
-    const parsed = claudeCode("test-model").parseStreamLine(line);
-    expect(parsed).toEqual([
-      {
-        type: "result",
-        result: "Done.",
-        usage: null,
-      },
-    ]);
-  });
-
-  it("returns null usage when usage fields are partial", () => {
-    const line = JSON.stringify({
-      type: "result",
-      result: "Done.",
-      usage: { input_tokens: 100 },
-    });
-    const parsed = claudeCode("test-model").parseStreamLine(line);
-    expect(parsed).toEqual([
-      {
-        type: "result",
-        result: "Done.",
-        usage: null,
-      },
     ]);
   });
 });
@@ -1809,7 +1745,7 @@ describe("Orchestrator prompt preprocessing", () => {
 });
 
 describe("Orchestrator Display integration", () => {
-  it("emits iteration header, spinner, usage summary, and completion status", async () => {
+  it("emits iteration header, spinner, and completion status", async () => {
     const hostDir = await mkdtemp(join(tmpdir(), "orch-display-"));
 
     await initRepo(hostDir);
@@ -1826,70 +1762,14 @@ describe("Orchestrator Display integration", () => {
         }),
     );
 
-    // Override toStreamJson to include usage data
-    const mockLayer = makeTestSandboxFactory(hostDir, (dir) => {
-      const fsLayer = makeLocalSandboxLayer(dir);
-      return Layer.succeed(Sandbox, {
-        exec: (command, options) =>
-          Effect.flatMap(Sandbox, (real) => real.exec(command, options)).pipe(
-            Effect.provide(fsLayer),
-          ),
-        execStreaming: (command, onStdoutLine, options) => {
-          if (command.startsWith("claude ")) {
-            const output = "All done. <promise>COMPLETE</promise>";
-            const lines = [
-              JSON.stringify({
-                type: "assistant",
-                message: { content: [{ type: "text", text: output }] },
-              }),
-              JSON.stringify({
-                type: "result",
-                result: output,
-                total_cost_usd: 0.14,
-                num_turns: 3,
-                duration_ms: 12000,
-                usage: {
-                  input_tokens: 52340,
-                  output_tokens: 3201,
-                  cache_read_input_tokens: 10000,
-                  cache_creation_input_tokens: 5000,
-                },
-              }),
-            ];
-            for (const line of lines) {
-              onStdoutLine(line);
-            }
-            return Effect.succeed({
-              stdout: lines.join("\n"),
-              stderr: "",
-              exitCode: 0,
-            });
-          }
-          return Effect.flatMap(Sandbox, (real) =>
-            real.execStreaming(command, onStdoutLine, options),
-          ).pipe(Effect.provide(fsLayer));
-        },
-        copyIn: (hostPath, sandboxPath) =>
-          Effect.flatMap(Sandbox, (real) =>
-            real.copyIn(hostPath, sandboxPath),
-          ).pipe(Effect.provide(fsLayer)),
-        copyOut: (sandboxPath, hostPath) =>
-          Effect.flatMap(Sandbox, (real) =>
-            real.copyOut(sandboxPath, hostPath),
-          ).pipe(Effect.provide(fsLayer)),
-      });
-    });
-
     await Effect.runPromise(
       orchestrate({
         provider: testProvider,
         hostRepoDir: hostDir,
-        sandboxRepoDir: mockLayer.sandboxRepoDir,
+        sandboxRepoDir,
         iterations: 5,
         prompt: "do some work",
-      }).pipe(
-        Effect.provide(Layer.merge(mockLayer.factoryLayer, displayLayer)),
-      ),
+      }).pipe(Effect.provide(Layer.merge(factoryLayer, displayLayer))),
     );
 
     const entries = await Effect.runPromise(Ref.get(ref));
@@ -1914,17 +1794,9 @@ describe("Orchestrator Display integration", () => {
       ),
     ).toBe(false);
 
-    // Usage summary
+    // No usage summary emitted
     const summaryEntries = entries.filter((e) => e._tag === "summary");
-    expect(summaryEntries.length).toBeGreaterThanOrEqual(1);
-    const usageSummary = summaryEntries[0] as {
-      _tag: "summary";
-      title: string;
-      rows: Record<string, string>;
-    };
-    expect(usageSummary.rows).toHaveProperty("Tokens");
-    expect(usageSummary.rows).not.toHaveProperty("Cost");
-    expect(usageSummary.rows).not.toHaveProperty("Context");
+    expect(summaryEntries).toHaveLength(0);
 
     // Completion status
     expect(

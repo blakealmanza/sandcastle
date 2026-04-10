@@ -6,9 +6,8 @@ import type { SandboxError } from "./errors.js";
 import type { SandboxService } from "./SandboxFactory.js";
 import { SandboxFactory } from "./SandboxFactory.js";
 import { withSandboxLifecycle, type SandboxHooks } from "./SandboxLifecycle.js";
-import type { AgentProvider, TokenUsage } from "./AgentProvider.js";
+import type { AgentProvider } from "./AgentProvider.js";
 
-export type { TokenUsage } from "./AgentProvider.js";
 export type { ParsedStreamEvent } from "./AgentProvider.js";
 
 const IDLE_WARNING_INTERVAL_MS = 60_000;
@@ -23,10 +22,9 @@ const invokeAgent = (
   onToolCall: (name: string, formattedArgs: string) => void,
   onIdleWarning: (minutes: number) => void,
   idleWarningIntervalMs: number = IDLE_WARNING_INTERVAL_MS,
-): Effect.Effect<{ result: string; usage: TokenUsage | null }, SandboxError> =>
+): Effect.Effect<{ result: string }, SandboxError> =>
   Effect.gen(function* () {
     let resultText = "";
-    let tokenUsage: TokenUsage | null = null;
 
     // Deferred that will be failed when the idle timer fires
     const timeoutSignal = yield* Deferred.make<never, TimeoutError>();
@@ -75,7 +73,6 @@ const invokeAgent = (
               onText(parsed.text);
             } else if (parsed.type === "result") {
               resultText = parsed.result;
-              tokenUsage = parsed.usage;
             } else if (parsed.type === "tool_call") {
               resetIdleTimer();
               onToolCall(parsed.name, parsed.args);
@@ -93,7 +90,7 @@ const invokeAgent = (
         );
       }
 
-      return { result: resultText || execResult.stdout, usage: tokenUsage };
+      return { result: resultText || execResult.stdout };
     }).pipe(
       Effect.ensuring(
         Effect.sync(() => {
@@ -111,13 +108,6 @@ const invokeAgent = (
 
     return yield* Effect.raceFirst(execEffect, Deferred.await(timeoutSignal));
   });
-
-const formatNumber = (n: number): string => n.toLocaleString("en-US");
-
-const formatUsageRows = (usage: TokenUsage): Record<string, string> => ({
-  Tokens: `${formatNumber(usage.input_tokens)} in / ${formatNumber(usage.output_tokens)} out`,
-  Turns: `${usage.num_turns}`,
-});
 
 const DEFAULT_COMPLETION_SIGNAL = "<promise>COMPLETE</promise>";
 const DEFAULT_IDLE_TIMEOUT_SECONDS = 10 * 60; // 600 seconds
@@ -221,7 +211,7 @@ export const orchestrate = (
                     : `Agent idle for ${minutes} minutes`;
                 Effect.runPromise(display.status(label(msg), "warn"));
               };
-              const { result: agentOutput, usage } = yield* invokeAgent(
+              const { result: agentOutput } = yield* invokeAgent(
                 ctx.sandbox,
                 ctx.sandboxRepoDir,
                 fullPrompt,
@@ -234,11 +224,6 @@ export const orchestrate = (
               );
 
               yield* display.status(label("Agent stopped"), "info");
-
-              // Log usage summary
-              if (usage) {
-                yield* display.summary("Token Usage", formatUsageRows(usage));
-              }
 
               // Check completion signal
               const matchedSignal = completionSignals.find((sig) =>
