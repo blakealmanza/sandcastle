@@ -273,8 +273,15 @@ export const WorktreeDockerSandboxFactory = {
                     message: `Failed to resolve git mounts: ${e}`,
                   }) as E | DockerError | WorktreeError,
               ),
-              Effect.flatMap((gitMounts) =>
-                Effect.acquireUseRelease(
+              Effect.flatMap((gitMounts) => {
+                if (sandboxProvider.tag !== "bind-mount") {
+                  return Effect.fail(
+                    new WorktreeError({
+                      message: `Sandbox provider '${sandboxProvider.name}' is not a bind-mount provider; worktree mode requires a bind-mount provider.`,
+                    }) as E | DockerError | WorktreeError,
+                  );
+                }
+                return Effect.acquireUseRelease(
                   startProviderSandbox(
                     sandboxProvider,
                     hostRepoDir,
@@ -299,8 +306,8 @@ export const WorktreeDockerSandboxFactory = {
                     value,
                     preservedWorktreePath: undefined,
                   })),
-                ),
-              ),
+                );
+              }),
             );
           }
 
@@ -363,8 +370,15 @@ export const WorktreeDockerSandboxFactory = {
                         AcquireResult,
                         DockerError | WorktreeError,
                         never
-                      > =>
-                        startProviderSandbox(
+                      > => {
+                        if (sandboxProvider.tag !== "bind-mount") {
+                          return Effect.fail(
+                            new WorktreeError({
+                              message: `Sandbox provider '${sandboxProvider.name}' is not a bind-mount provider; worktree mode requires a bind-mount provider.`,
+                            }),
+                          );
+                        }
+                        return startProviderSandbox(
                           sandboxProvider,
                           worktreeInfo.path,
                           hostRepoDir,
@@ -377,7 +391,8 @@ export const WorktreeDockerSandboxFactory = {
                             handle,
                             sandboxLayer,
                           })),
-                        ),
+                        );
+                      },
                     ),
                   );
                 }),
