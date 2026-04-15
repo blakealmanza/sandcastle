@@ -392,7 +392,7 @@ const rewritePromptFiles = (
       mdFiles.map((f) =>
         Effect.gen(function* () {
           const filePath = join(configDir, f);
-          let content = yield* fs
+          const content = yield* fs
             .readFileString(filePath)
             .pipe(Effect.mapError((e) => new Error(e.message)));
           const updated = content.replace(/ --label Sandcastle/g, "");
