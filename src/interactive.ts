@@ -270,7 +270,10 @@ export const interactive = async (
             );
 
             // Build interactive args and run the session
-            const interactiveArgs = provider.buildInteractiveArgs!(fullPrompt);
+            const interactiveArgs = provider.buildInteractiveArgs!({
+              prompt: fullPrompt,
+              dangerouslySkipPermissions: true,
+            });
             const result = yield* Effect.promise(() =>
               interactiveExecFn(interactiveArgs, {
                 stdin: process.stdin,

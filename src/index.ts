@@ -17,6 +17,7 @@ export type { MountConfig } from "./MountConfig.js";
 export { claudeCode, codex, opencode, pi } from "./AgentProvider.js";
 export type {
   AgentProvider,
+  AgentCommandOptions,
   ClaudeCodeOptions,
   CodexOptions,
   OpenCodeOptions,

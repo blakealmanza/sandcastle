@@ -66,7 +66,10 @@ const invokeAgent = (
 
     const execEffect = Effect.gen(function* () {
       const execResult = yield* sandbox.exec(
-        provider.buildPrintCommand(prompt),
+        provider.buildPrintCommand({
+          prompt,
+          dangerouslySkipPermissions: true,
+        }),
         {
           onLine: (line) => {
             resetIdleTimer();
