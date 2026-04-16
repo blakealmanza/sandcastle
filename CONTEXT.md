@@ -31,12 +31,12 @@ A TypeScript toolkit that orchestrates AI coding agents inside isolated sandbox 
 | Term                             | Definition                                                                                                                              | Aliases to avoid                                                              |
 | -------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------- |
 | **Iteration**                    | A single invocation of the **agent** inside the **sandbox**, producing at most one commit against one **task**                          | "run" (ambiguous with the JS `run()` function), "cycle", "loop"               |
-| **Task**                         | A GitHub issue that the **agent** selects and works on during an **iteration**                                                          | "job", "work item", "ticket"                                                  |
+| **Task**                         | A work item from the **backlog manager** that the **agent** selects and works on during an **iteration**                                | "job", "work item", "ticket"                                                  |
 | **Completion signal**            | The `<promise>COMPLETE</promise>` marker in the **agent**'s output indicating all actionable tasks are finished                         | "done flag", "exit signal"                                                    |
 | **Orchestrator**                 | The module that drives the **iteration** loop                                                                                           | "runner", "loop", "wrapper script"                                            |
 | **Prompt**                       | The instruction text passed to the **agent** at the start of each **iteration**                                                         | "system prompt" (too specific), "instructions" (too vague), "message"         |
-| **Prompt argument**              | A named key-value pair passed via `promptArgs` in `run()` that substitutes a `{{KEY}}` placeholder in a **prompt**                      | "prompt variable" (ambiguous with env vars), "template variable", "parameter" |
-| **Prompt argument substitution** | The preprocessing step that replaces `{{KEY}}` placeholders in a **prompt** with values from the **prompt arguments** map               | "template expansion", "interpolation", "variable substitution"                |
+| **Prompt argument**              | A runtime **template argument** passed via `promptArgs` in `run()` that substitutes a `{{KEY}}` placeholder in a **prompt**             | "prompt variable" (ambiguous with env vars), "template variable", "parameter" |
+| **Prompt argument substitution** | **Template argument substitution** applied to a **prompt** at runtime, using the **prompt arguments** map                               | "template expansion", "interpolation", "variable substitution"                |
 | **Prompt expansion**             | The preprocessing step that evaluates **shell expressions** in a **prompt**, replacing them with their stdout                           | "prompt preprocessing" (too generic), "command expansion"                     |
 | **Shell expression**             | A `` !`command` `` marker in a **prompt** that evaluates a shell command inside the **sandbox**                                         | "command" (overloaded), "inline command", "prompt command"                    |
 | **Built-in prompt argument**     | A **prompt argument** that Sandcastle injects automatically — not provided by the user via `promptArgs`                                 | "system variable", "auto argument", "default prompt argument"                 |
@@ -44,14 +44,22 @@ A TypeScript toolkit that orchestrates AI coding agents inside isolated sandbox 
 | **Source branch**                | The branch the **agent** works on — determined by the **branch strategy**                                                               | "working branch", "agent branch"                                              |
 | **Target branch**                | The **host**'s active branch at `run()` time — the branch Sandcastle merges into when using **merge-to-head**                           | "base branch", "destination branch", "merge target"                           |
 
+### Init
+
+| Term                               | Definition                                                                                                                                                                                                      | Aliases to avoid                       |
+| ---------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------- |
+| **Init**                           | The CLI command that scaffolds the **config directory** in a **host** repo                                                                                                                                      | "create", "bootstrap", "new"           |
+| **Config directory**               | The `.sandcastle/` directory in a **host** repo containing sandbox configuration                                                                                                                                | ".sandcastle folder", "sandcastle dir" |
+| **Backlog manager**                | A pluggable source of **tasks** for the **agent**, selected during **init** (e.g. GitHub Issues, Beads). Determines which CLI tools are installed in the Dockerfile and which commands appear in the **prompt** | "task source", "issue tracker"         |
+| **Template argument**              | A named `{{KEY}}` placeholder in a scaffold template (Dockerfile, prompt `.md` file) that **init** replaces with a value derived from the user's choices                                                        | "placeholder", "variable"              |
+| **Template argument substitution** | The preprocessing step during **init** that replaces **template arguments** with their resolved values                                                                                                          | "template expansion", "interpolation"  |
+
 ### Infrastructure
 
 | Term                 | Definition                                                                                                                  | Aliases to avoid                                                              |
 | -------------------- | --------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------- |
 | **Env resolver**     | The module that loads environment variables from `.env` files and `process.env`                                             | "token resolver" (too specific to auth tokens)                                |
 | **Env manifest**     | The **agent provider**'s declaration of which environment variables it requires or supports                                 | "env example", "env template", "env schema"                                   |
-| **Config directory** | The `.sandcastle/` directory in a **host** repo containing sandbox configuration                                            | ".sandcastle folder", "sandcastle dir"                                        |
-| **Init**             | The CLI command that scaffolds the **config directory** in a **host** repo                                                  | "create", "bootstrap", "new"                                                  |
 | **Build-image**      | A provider-namespaced CLI command that rebuilds the image (e.g. `sandcastle docker build-image`)                            | "setup-sandbox" (old name)                                                    |
 | **Remove-image**     | A provider-namespaced CLI command that removes the image (e.g. `sandcastle docker remove-image`)                            | "cleanup-sandbox" (old name)                                                  |
 | **Log-to-file mode** | The display mode where Sandcastle writes iteration progress and agent output to a **run log**                               | "file mode", "file logging", "quiet mode"                                     |
@@ -75,13 +83,16 @@ A TypeScript toolkit that orchestrates AI coding agents inside isolated sandbox 
 - The **sandbox handle** is wrapped internally into the **sandbox service** for use in Effect-based internals. **Isolated** handles additionally expose `copyIn`, `copyOut`, and `extractCommits`
 - **Sandbox providers** are imported from subpaths (e.g. `sandcastle/sandboxes/docker`) — the main `sandcastle` entry point does not re-export any provider
 - Each **iteration** may produce one or more commits; iterations repeat until the **completion signal** fires or the max count is reached
-- **Init** creates the **config directory** on the **host**
+- **Init** creates the **config directory** on the **host**, prompting the user to select an **agent** and **backlog manager**
+- **Init** performs **template argument substitution** on Dockerfiles and scaffold `.md` files, replacing **template arguments** with values derived from the user's choices
+- Each **backlog manager** declares a Dockerfile snippet (installed via **template argument substitution**) and command placeholders for **prompt** templates
+- The **agent**'s Dockerfile template contains **template arguments** (e.g. `{{BACKLOG_MANAGER_TOOLS}}`) that **init** fills in based on the selected **backlog manager**
 - **Build-image** and **remove-image** are namespaced under their provider in the CLI (e.g. `sandcastle docker build-image`)
 - The **env resolver** loads env vars from: **config directory** `.env` > `process.env` — only keys declared in the **config directory** `.env` are resolved from `process.env`; repo root `.env` is not part of the resolution chain
 - Each **agent provider** declares an **env manifest**
 - The **agent provider** is selected via the `agent` field in config or `--agent` CLI flag
 - At launch, Sandcastle resolves env vars via the **env resolver** and passes the full env map into the **sandbox**
-- **Init** uses the **agent provider**'s **env manifest** to scaffold `.env.example` and its Dockerfile template to scaffold the Dockerfile
+- **Init** uses the **agent provider**'s **env manifest** to scaffold `.env.example`
 - `buildInteractiveArgs` and `buildPrintCommand` on the **agent provider** accept an options object with a `dangerouslySkipPermissions` boolean — `false` for **no-sandbox**, `true` otherwise
 - **Prompt argument substitution** runs once after prompt resolution, replacing `{{KEY}}` placeholders with values from **prompt arguments** — this happens on the **host**, before the **sandbox** exists
 - **Prompt expansion** runs before each **iteration**, evaluating all **shell expressions** inside the **sandbox**
