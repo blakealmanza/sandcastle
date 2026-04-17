@@ -1,5 +1,5 @@
 import { Duration, Effect, Exit, TestClock, TestContext } from "effect";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { exec } from "node:child_process";
 import { tmpdir } from "node:os";
