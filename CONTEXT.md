@@ -158,6 +158,10 @@ _Avoid_: "setup-sandbox" (old name)
 A provider-namespaced CLI command that removes the image (e.g. `sandcastle docker remove-image`).
 _Avoid_: "cleanup-sandbox" (old name)
 
+**Agent session**:
+The **agent**'s persisted conversation record. For Claude Code, a `<session-id>.jsonl` written per **iteration**. Resumable via `claude --resume`.
+_Avoid_: "chat history", "transcript"
+
 ### Display
 
 **Log-to-file mode**:
