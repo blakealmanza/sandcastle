@@ -1,4 +1,3 @@
-import { join } from "node:path";
 import { Deferred, Effect } from "effect";
 import { Display } from "./Display.js";
 import { preprocessPrompt } from "./PromptPreprocessor.js";
@@ -18,6 +17,9 @@ import {
   sandboxSessionStore,
   transferSession,
 } from "./SessionStore.js";
+
+/** Sandbox-side Claude Code projects directory (fixed convention). */
+const SANDBOX_PROJECTS_DIR = "/home/agent/.claude/projects";
 
 export type { ParsedStreamEvent } from "./AgentProvider.js";
 
@@ -215,13 +217,6 @@ export const orchestrate = (
             },
             (ctx) =>
               Effect.gen(function* () {
-                // Shared sandbox session infrastructure for resume + capture
-                const sandboxProjectsDir = join(
-                  "/home/agent",
-                  ".claude",
-                  "projects",
-                );
-
                 // Resume session: transfer JSONL from host to sandbox before iteration 1
                 const iterationResumeSession =
                   i === 1 ? options.resumeSession : undefined;
@@ -230,7 +225,7 @@ export const orchestrate = (
                   const sbStore = sandboxSessionStore(
                     ctx.sandboxRepoDir,
                     bindMountHandle,
-                    sandboxProjectsDir,
+                    SANDBOX_PROJECTS_DIR,
                   );
                   const hStore = hostSessionStore(
                     hostRepoDir,
@@ -300,7 +295,7 @@ export const orchestrate = (
                   const sbStore = sandboxSessionStore(
                     ctx.sandboxRepoDir,
                     bindMountHandle,
-                    sandboxProjectsDir,
+                    SANDBOX_PROJECTS_DIR,
                   );
                   const hStore = hostSessionStore(
                     hostRepoDir,
