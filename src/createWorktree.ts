@@ -97,6 +97,8 @@ export interface WorktreeInteractiveOptions {
    *
    * - If `signal.aborted` is already `true` at entry, rejects immediately.
    * - Aborting during an active session kills the agent subprocess.
+   * - The worktree is preserved on disk after abort.
+   * - The `Worktree` handle remains usable for subsequent operations.
    * - The rejected promise surfaces `signal.reason` via
    *   `signal.throwIfAborted()` — no Sandcastle-specific wrapping.
    */
@@ -130,6 +132,16 @@ export interface WorktreeRunOptions {
   readonly env?: Record<string, string>;
   /** Resume a prior Claude Code session by ID. The session JSONL must exist on the host. Incompatible with maxIterations > 1. */
   readonly resumeSession?: string;
+  /**
+   * An `AbortSignal` that cancels the run when aborted.
+   *
+   * - If `signal.aborted` is already `true` at entry, rejects immediately
+   *   without doing any setup work.
+   * - Aborting mid-iteration kills the in-flight agent subprocess.
+   * - The worktree is preserved on disk after abort.
+   * - The `Worktree` handle remains usable for subsequent operations.
+   */
+  readonly signal?: AbortSignal;
 }
 
 export interface WorktreeRunResult {
@@ -414,9 +426,8 @@ export const createWorktree = async (
       );
     });
 
-    let result: InteractiveResult;
     try {
-      result = await Effect.runPromise(
+      return await Effect.runPromise(
         inner.pipe(
           Effect.provide(ClackDisplay.layer),
           Effect.provide(NodeContext.layer),
@@ -428,13 +439,14 @@ export const createWorktree = async (
       opts.signal?.throwIfAborted();
       throw error;
     }
-
-    return result;
   };
 
   const worktreeRun = async (
     opts: WorktreeRunOptions,
   ): Promise<WorktreeRunResult> => {
+    // If signal is already aborted, reject immediately without any setup
+    opts.signal?.throwIfAborted();
+
     const { prompt, promptFile, hooks, agent: provider } = opts;
     const sandboxProvider = opts.sandbox;
     const maxIterations = opts.maxIterations ?? 1;
@@ -581,6 +593,7 @@ export const createWorktree = async (
           idleTimeoutSeconds: opts.idleTimeoutSeconds,
           name: opts.name,
           resumeSession: opts.resumeSession,
+          signal: opts.signal,
         });
       }).pipe(
         Effect.provide(runLayer),
@@ -599,13 +612,19 @@ export const createWorktree = async (
       } satisfies WorktreeRunResult;
     });
 
-    return Effect.runPromise(
-      inner.pipe(
-        Effect.provide(ClackDisplay.layer),
-        Effect.provide(NodeContext.layer),
-        Effect.provide(NodeFileSystem.layer),
-      ),
-    );
+    try {
+      return await Effect.runPromise(
+        inner.pipe(
+          Effect.provide(ClackDisplay.layer),
+          Effect.provide(NodeContext.layer),
+          Effect.provide(NodeFileSystem.layer),
+        ),
+      );
+    } catch (error: unknown) {
+      // If the signal was aborted, surface its reason verbatim (no wrapping)
+      opts.signal?.throwIfAborted();
+      throw error;
+    }
   };
 
   const worktreeCreateSandbox = async (
