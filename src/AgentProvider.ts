@@ -143,14 +143,14 @@ const parsePiStreamLine = (line: string): ParsedStreamEvent[] => {
     // the Orchestrator's stderr-empty fallback can surface them to the user.
     if (obj.type === "agent_error" || obj.type === "error") {
       const err = obj.error;
-      const msg =
-        typeof err === "string"
-          ? err
-          : typeof err === "object" && err !== null && typeof err.message === "string"
-            ? (err.message as string)
-            : typeof obj.message === "string"
-              ? (obj.message as string)
-              : undefined;
+      let msg: string | undefined;
+      if (typeof err === "string") {
+        msg = err;
+      } else if (typeof err === "object" && err !== null && typeof err.message === "string") {
+        msg = err.message;
+      } else if (typeof obj.message === "string") {
+        msg = obj.message;
+      }
       return msg ? [{ type: "result", result: msg }] : [];
     }
     if (obj.type === "agent_end" && Array.isArray(obj.messages)) {
