@@ -138,6 +138,21 @@ const parsePiStreamLine = (line: string): ParsedStreamEvent[] => {
       if (typeof argValue !== "string") return [];
       return [{ type: "tool_call", name: toolName, args: argValue }];
     }
+    // Pi emits agent_error / error events on stdout (not stderr) for auth
+    // failures, rate limits, and API errors. Capture them as result events so
+    // the Orchestrator's stderr-empty fallback can surface them to the user.
+    if (obj.type === "agent_error" || obj.type === "error") {
+      const err = obj.error;
+      const msg =
+        typeof err === "string"
+          ? err
+          : typeof err === "object" && err !== null && typeof err.message === "string"
+            ? (err.message as string)
+            : typeof obj.message === "string"
+              ? (obj.message as string)
+              : undefined;
+      return msg ? [{ type: "result", result: msg }] : [];
+    }
     if (obj.type === "agent_end" && Array.isArray(obj.messages)) {
       const messages = obj.messages as {
         role: string;
